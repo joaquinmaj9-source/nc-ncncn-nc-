@@ -565,7 +565,9 @@ export default function App() {
   const [filterAuthor, setFilterAuthor] = useState('all')
   const [expanding, setExpanding] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [showBackup, setShowBackup] = useState(false)
   const inputRef = useRef(null)
+  const fileRef = useRef(null)
 
   const handleLogin = (name) => {
     setUser(name)
@@ -672,6 +674,48 @@ export default function App() {
     setExpanding(null)
   }
 
+  // ─── backup functions ───
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `intel-feed-backup-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importData = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result)
+        if (Array.isArray(imported)) {
+          let count = 0
+          for (const item of imported) {
+            const { error } = await supabase.from('entries').insert({
+              content: item.content,
+              source: item.source || null,
+              category: item.category || 'dato',
+              author: item.author || user,
+              expansion: item.expansion || null,
+              enrichment: item.enrichment || null,
+            })
+            if (!error) count++
+          }
+          await fetchEntries()
+          alert(`importado: ${count} entradas.`)
+        }
+      } catch (err) {
+        alert('error al importar. asegurate de que sea un json válido.')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   if (!user) return <LoginScreen onLogin={handleLogin} />
 
   const authors = [...new Set(entries.map(e => e.author))]
@@ -695,6 +739,7 @@ export default function App() {
         backgroundImage: NOISE_SVG, backgroundRepeat: 'repeat',
         pointerEvents: 'none', zIndex: 0,
       }} />
+      <input type="file" ref={fileRef} accept=".json" style={{ display: 'none' }} onChange={importData} />
 
       {/* ─── header ─── */}
       <div style={{
@@ -760,7 +805,7 @@ export default function App() {
         </div>
 
         {/* category filters */}
-        <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '8px', alignItems: 'center' }}>
           <button onClick={() => setFilterCat('all')} style={{
             ...s.btn, fontSize: '8px', padding: '3px 8px',
             background: filterCat === 'all' ? '#12121a' : 'transparent',
@@ -777,7 +822,35 @@ export default function App() {
               flexShrink: 0, whiteSpace: 'nowrap',
             }}>{cat.icon} {cat.label}</button>
           ))}
+          <button onClick={() => setShowBackup(!showBackup)} style={{
+            background: 'none', border: 'none', color: '#2a2a3a', cursor: 'pointer',
+            ...s.jet, fontSize: '10px', padding: '3px 6px', marginLeft: 'auto', flexShrink: 0,
+          }}
+            onMouseEnter={(e) => e.target.style.color = '#888'}
+            onMouseLeave={(e) => e.target.style.color = '#2a2a3a'}
+          >⚙</button>
         </div>
+
+        {/* backup panel */}
+        {showBackup && (
+          <div style={{
+            display: 'flex', gap: '8px', paddingBottom: '10px', paddingTop: '6px',
+            borderTop: '1px solid #12121a', marginTop: '4px', flexWrap: 'wrap',
+          }}>
+            <button onClick={exportData} style={{
+              ...s.btn, fontSize: '8px', padding: '5px 10px',
+              background: '#0c0c14', borderColor: '#1a1a2a',
+            }}>↓ exportar backup</button>
+            <button onClick={() => fileRef.current?.click()} style={{
+              ...s.btn, fontSize: '8px', padding: '5px 10px',
+              background: '#0c0c14', borderColor: '#1a1a2a',
+            }}>↑ importar backup</button>
+            <span style={{
+              ...s.jet, fontSize: '7px', color: '#2a2a3a',
+              alignSelf: 'center', letterSpacing: '0.5px',
+            }}>json backup por si las dudas</span>
+          </div>
+        )}
 
         {/* author filters */}
         {authors.length > 1 && (
