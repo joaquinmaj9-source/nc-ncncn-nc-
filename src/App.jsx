@@ -179,66 +179,6 @@ function LoginScreen({ onLogin }) {
   )
 }
 
-// ─── enrichment display ───
-function EnrichmentBadge({ enrichment }) {
-  if (!enrichment) return null
-  let data
-  try { data = JSON.parse(enrichment) } catch { return null }
-  if (!data.found) return null
-
-  return (
-    <div style={{
-      display: 'flex', gap: '12px', alignItems: 'flex-start',
-      padding: '12px', background: '#0c0c14', border: '1px solid #1a1a2e',
-      marginTop: '12px',
-    }}>
-      {data.image && (
-        <img
-          src={data.image}
-          alt={data.title}
-          style={{
-            width: '52px', height: '52px', objectFit: 'cover',
-            border: '1px solid #2a2a3a', flexShrink: 0,
-            filter: 'grayscale(30%) contrast(1.1)',
-          }}
-        />
-      )}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          ...s.jet, fontSize: '10px', color: '#c77dff',
-          letterSpacing: '1px', marginBottom: '4px',
-        }}>
-          {data.title?.toLowerCase()}
-        </div>
-        {data.extract && (
-          <div style={{
-            ...s.mono, fontSize: '10px', color: '#666',
-            lineHeight: '1.6', overflow: 'hidden',
-            display: '-webkit-box', WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-          }}>
-            {data.extract}
-          </div>
-        )}
-        {data.url && (
-          <a
-            href={data.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              ...s.jet, fontSize: '8px', color: '#555',
-              letterSpacing: '1px', marginTop: '4px',
-              display: 'inline-block', textDecoration: 'none',
-            }}
-          >
-            ∞ wikipedia →
-          </a>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ─── intel card ───
 function IntelCard({ entry, index, onDelete, onExpand, expanding, currentUser }) {
   const accent = getAccent(index)
@@ -322,9 +262,6 @@ function IntelCard({ entry, index, onDelete, onExpand, expanding, currentUser })
         {entry.content}
       </div>
 
-      {/* enrichment */}
-      <EnrichmentBadge enrichment={entry.enrichment} />
-
       {/* expansion */}
       {entry.expansion && (
         <div style={{ marginTop: '14px' }}>
@@ -396,9 +333,6 @@ function SlideView({ entries, onClose }) {
 
   useEffect(() => { setShowExp(false) }, [idx])
 
-  let enrichData = null
-  try { if (entry.enrichment) enrichData = JSON.parse(entry.enrichment) } catch {}
-
   return (
     <div style={{
       position: 'fixed', inset: 0, background: '#05050a',
@@ -456,28 +390,6 @@ function SlideView({ entries, onClose }) {
 
       {/* content */}
       <div style={{ maxWidth: '560px', textAlign: 'center', zIndex: 2 }}>
-        {/* author image in slides */}
-        {enrichData?.found && enrichData.image && (
-          <div style={{ marginBottom: '24px' }}>
-            <img
-              src={enrichData.image}
-              alt={enrichData.title}
-              style={{
-                width: '64px', height: '64px', objectFit: 'cover',
-                borderRadius: '50%', border: `2px solid ${accent}33`,
-                filter: 'grayscale(40%) contrast(1.1)',
-                boxShadow: `0 0 20px ${accent}11`,
-              }}
-            />
-            <div style={{
-              ...s.jet, fontSize: '9px', color: '#555',
-              marginTop: '6px', letterSpacing: '1px',
-            }}>
-              {enrichData.title?.toLowerCase()}
-            </div>
-          </div>
-        )}
-
         {entry.source && (
           <div style={{
             ...s.jet, fontSize: '9px', color: '#4a4a5a',
@@ -600,42 +512,16 @@ export default function App() {
     return () => { supabase.removeChannel(channel) }
   }, [user, fetchEntries])
 
-  // auto-enrich after adding entry
-  const enrichEntry = async (id, query) => {
-    try {
-      const res = await fetch('/api/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      })
-      const data = await res.json()
-      if (data.found) {
-        await supabase.from('entries').update({
-          enrichment: JSON.stringify(data)
-        }).eq('id', id)
-        await fetchEntries()
-      }
-    } catch (err) {
-      console.error('enrich error:', err)
-    }
-  }
-
   const addEntry = async () => {
     if (!content.trim()) return
     setSaving(true)
-    const { data: inserted, error } = await supabase.from('entries').insert({
+    const { error } = await supabase.from('entries').insert({
       content: content.trim().toLowerCase(),
       source: source.trim().toLowerCase() || null,
       category,
       author: user,
-    }).select()
-
-    if (!error && inserted && inserted[0]) {
-      const newEntry = inserted[0]
-      // auto-enrich if has source
-      if (source.trim()) {
-        enrichEntry(newEntry.id, source.trim())
-      }
+    })
+    if (!error) {
       setContent('')
       setSource('')
       setView('feed')
@@ -701,7 +587,6 @@ export default function App() {
               category: item.category || 'dato',
               author: item.author || user,
               expansion: item.expansion || null,
-              enrichment: item.enrichment || null,
             })
             if (!error) count++
           }
@@ -915,7 +800,7 @@ export default function App() {
           <input
             value={source}
             onChange={e => setSource(e.target.value)}
-            placeholder="fuente / autor (se busca info automáticamente)..."
+            placeholder="fuente (libro, podcast, persona...)"
             style={{
               ...s.input, ...s.jet, fontSize: '11px', color: '#888', marginBottom: '14px',
             }}
